@@ -18,6 +18,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const L0 = require('./lib/l0');
+const API = require('./lib/internal-api');
 
 const PORT = 3100;                                  // 避开看板的 3000
 const DATA_DIR = path.join(__dirname, 'data', 'weeks');
@@ -75,7 +76,18 @@ function listWeeks() {
 
 function viewOf(state) {
   const live = state.items.filter(it => !it.mergedInto);
+  const liveIds = new Set(live.map(it => it.id));
+
+  // L0 规则候选 + L1 语义候选合成一份列表。
+  // 语义候选单独标 level='semantic'，界面上要让人看出这条是模型给的
+  // 判断而不是字面相似 —— 两者的可信方式不一样，不该混着展示。
   const similar = L0.findSimilar(live);
+  for (const p of state.semanticPairs || []) {
+    if (!liveIds.has(p.a) || !liveIds.has(p.b)) continue;   // 合并/删除后可能失效
+    if (similar.some(q => (q.a === p.a && q.b === p.b) || (q.a === p.b && q.b === p.a))) continue;
+    similar.push({ a: p.a, b: p.b, score: 1, level: 'semantic', why: p.why });
+  }
+
   return {
     week: state.week,
     sources: state.sources.map(s => ({
@@ -91,6 +103,8 @@ function viewOf(state) {
     similar,
     summary: L0.summarize(state.items, similar),
     weeks: listWeeks(),
+    api: API.status(),          // 页面据此决定「拉取」「语义分析」按钮是否可点
+    l1RanAt: state.l1RanAt || null,
   };
 }
 
@@ -167,18 +181,29 @@ const routes = {
 
     // 白名单，避免前端一不小心把 range / sourceId 覆盖掉，
     // 那样就再也回溯不到原文了
-    const EDITABLE = ['owner', 'project', 'category', 'text', 'status', 'reviewed'];
-    for (const k of EDITABLE) {
-      if (body.patch && k in body.patch) item[k] = body.patch[k];
-    }
+    const CONTENT = ['owner', 'project', 'category', 'text', 'status'];
+    const patch = body.patch || {};
 
-    // 正文改了就重算数字。类别/状态是人手动改的，不覆盖人的判断
-    if (body.patch && 'text' in body.patch) {
-      item.metrics = L0.extractMetrics(item.text);
+    let edited = false;
+    for (const k of CONTENT) {
+      if (k in patch) { item[k] = patch[k]; edited = true; }
     }
-    // 人碰过的条目一律满置信度 —— 置信度表达的是「机器有多确定」，
-    // 人确认过之后这个数就没意义了
-    if (body.patch && body.patch.reviewed) item.confidence = 1;
+    if ('reviewed' in patch) item.reviewed = patch.reviewed;
+
+    // 正文改了就重算数字
+    if ('text' in patch) item.metrics = L0.extractMetrics(item.text);
+
+    // 只要人动过任何一个内容字段，就算他看过这条。
+    //
+    // 这个标记必须由服务端来打，不能指望前端顺手带上 —— 它是
+    // 「人的判断优先于模型」这条保证的唯一依据：L1 语义分析靠
+    // reviewed 决定哪些条目不能碰。前端漏传一次，模型就会把人
+    // 改好的结果覆盖回去，而且用户完全不知道发生了什么。
+    if (edited || patch.reviewed) {
+      item.reviewed = true;
+      item.confidence = 1;   // 置信度表达「机器有多确定」，人确认后这个数就没意义了
+      delete item.l1;        // 人接手了，不再是模型的判断
+    }
 
     writeWeek(state);
     return viewOf(state);
@@ -236,6 +261,106 @@ const routes = {
 
     writeWeek(state);
     return viewOf(state);
+  },
+
+  // ── 从内网接口拉周报 ──
+  //
+  // 拉下来的内容走和手工导入完全相同的路径：存成 source，再交给
+  // 同一套 L0 切分。两条导入路径共用规则，才不会出现「拉的和贴的分得不一样」。
+  async 'POST /api/pull'(query, body) {
+    const week = body.week || L0.isoWeek();
+    const state = readWeek(week);
+
+    let reports;
+    try {
+      reports = await API.pullReports(week);
+    } catch (err) {
+      // 内网不通不算服务器故障，是配置或环境问题，用 400 让前端直接显示原因
+      throw new HttpError(400, err.message);
+    }
+    if (!reports.length) throw new HttpError(400, `接口没返回 ${week} 的周报内容`);
+
+    // 同一个人重复拉不该产生两份。按提交人去重，新的覆盖旧的。
+    let added = 0, replaced = 0;
+    for (const r of reports) {
+      const raw = String(r.raw).replace(/\r\n?/g, '\n');
+      const old = r.author
+        ? state.sources.find(s => s.kind === 'api' && s.author === r.author)
+        : null;
+
+      if (old) {
+        state.items = state.items.filter(it => it.sourceId !== old.id);
+        state.sources = state.sources.filter(s => s.id !== old.id);
+        replaced++;
+      } else added++;
+
+      const source = {
+        id: L0.newId('s'),
+        kind: 'api',
+        name: r.name,
+        author: r.author,
+        importedAt: new Date().toISOString(),
+        raw,
+      };
+      state.sources.push(source);
+      state.items.push(...L0.buildItems(source, week));
+    }
+
+    state.week = week;
+    writeWeek(state);
+    return { ...viewOf(state), notice: `拉取成功：新增 ${added} 份，更新 ${replaced} 份` };
+  },
+
+  // ── L1 语义分析 ──
+  //
+  // 只对**低置信度**的条目重新判类别，不动人已经确认过的 ——
+  // 人的判断优先于模型，这是不能反过来的。
+  // 同义条目一律只加候选，绝不自动合并。
+  async 'POST /api/enrich'(query, body) {
+    const week = body.week || L0.isoWeek();
+    const state = readWeek(week);
+
+    const live = state.items.filter(it => !it.mergedInto);
+    if (!live.length) throw new HttpError(400, '这一周还没有条目');
+
+    let result;
+    try {
+      result = await API.callL1(live);
+    } catch (err) {
+      throw new HttpError(400, err.message);
+    }
+
+    // 归类结果：唯一的守门条件是「人没碰过」。
+    //
+    // 一开始我按置信度过滤（只改 conf<0.6 的），结果 L1 几乎从不生效 ——
+    // 大部分条目都在 0.6 以上，模型的修正全被丢掉，功能等于白做。
+    // 而且这个门槛本身就站不住：置信度衡量的是 L0 关键词匹配有多有把握，
+    // 不代表它答对了。L1 看得到完整语义，本来就该允许它纠正 L0 的猜测。
+    // 真正不能覆盖的只有人明确表过态的条目。
+    let changed = 0;
+    for (const c of result.classify) {
+      const item = state.items.find(it => it.id === c.id);
+      if (!item || item.reviewed || item.mergedInto) continue;
+
+      let touched = false;
+      if (c.category && c.category !== item.category) { item.category = c.category; touched = true; }
+      if (c.status && c.status !== item.status) { item.status = c.status; touched = true; }
+      if (touched) {
+        item.l1 = true;          // 界面上标出来这条是模型改的，人可以再改回去
+        item.confidence = 0.9;   // 不给满分 —— 满分只留给人确认过的
+        changed++;
+      }
+    }
+
+    state.semanticPairs = result.pairs;
+    state.l1RanAt = new Date().toISOString();
+    writeWeek(state);
+
+    const fresh = result.pairs.length;
+    return {
+      ...viewOf(state),
+      notice: `语义分析完成：修正 ${changed} 条分类，发现 ${fresh} 组同义条目（只是候选，需你确认）`,
+    };
   },
 
   // ── 取原文（回溯用）──
@@ -300,7 +425,8 @@ const server = http.createServer(async (req, res) => {
   try {
     const query = Object.fromEntries(url.searchParams);
     const body = req.method === 'GET' ? {} : await readBody(req);
-    const result = handler(query, body);
+    // await 一个非 Promise 也没问题，这样同步和异步路由可以混着写
+    const result = await handler(query, body);
 
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',

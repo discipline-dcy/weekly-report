@@ -109,6 +109,18 @@
   .save-state.saving { color: var(--warning); }
   .save-state.error  { color: var(--critical); }
 
+  /* ── 提示条：拉取/分析的结果，以及失败原因 ─────────────── */
+  .notice {
+    display: none;
+    flex: none;
+    padding: 9px 18px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .notice.show { display: block; }
+  .notice.ok   { background: var(--good-bg);     color: var(--good); }
+  .notice.bad  { background: var(--critical-bg); color: var(--critical); }
+
   /* ── 三栏 ───────────────────────────────────────────────── */
   main {
     flex: 1;
@@ -235,6 +247,9 @@
      不只靠颜色 —— 红绿色盲约占男性 8% */
   .item.low  { border-left: 3px solid var(--warning); }
   .item.dupe { border-left: 3px solid var(--critical); }
+  /* 语义候选用虚线：模型的判断和字面相似不是一回事，
+     可信方式不同，视觉上就该能分辨 */
+  .item.semantic { border-left: 3px dashed var(--accent); }
   .item.picked { box-shadow: 0 0 0 2px var(--accent); }
 
   .item input[type=checkbox] { margin-top: 5px; width: 15px; height: 15px; }
@@ -410,9 +425,13 @@
 <header>
   <h1>周报整理</h1>
   <select id="weekSel" title="切换周"></select>
+  <button id="pullBtn" title="从内网接口拉取本周周报">从内网拉取</button>
+  <button id="enrichBtn" title="调内网模型做归类和同义判定">语义分析</button>
   <span class="spacer"></span>
   <span class="save-state" id="saveState">就绪</span>
 </header>
+
+<div class="notice" id="notice"></div>
 
 <main>
   <!-- ══ 左：素材来源 ══ -->
@@ -550,6 +569,22 @@ async function api(method, path, body) {
   }
 }
 
+// 内网接口调用可能要几十秒（模型推理），得让按钮显示在忙，
+// 否则用户会以为没点上，连点好几次
+async function runApi(btn, label, path) {
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = label;
+  try {
+    apply(await api('POST', path, {}));
+  } catch (err) {
+    showNotice(err.message, 'bad');
+  } finally {
+    btn.textContent = old;
+    renderApiButtons();     // 由配置决定是否恢复可点，不要无脑 enable
+  }
+}
+
 async function reload(week) {
   const w = week || WEEK || '';
   const res = await fetch('/api/state' + (w ? '?week=' + encodeURIComponent(w) : ''));
@@ -557,9 +592,19 @@ async function reload(week) {
   apply(await res.json());
 }
 
+function showNotice(text, cls) {
+  const el = $('notice');
+  el.textContent = text;
+  el.className = 'notice show ' + cls;
+  clearTimeout(showNotice.t);
+  // 失败信息留久一点，成功的看一眼就够
+  showNotice.t = setTimeout(() => el.classList.remove('show'), cls === 'bad' ? 15000 : 6000);
+}
+
 function apply(view) {
   VIEW = view;
   WEEK = view.week;
+  if (view.notice) showNotice(view.notice, 'ok');
   // 已经不存在的条目要从选择集里剔掉，否则合并按钮会指向幽灵 id
   for (const id of [...selected]) {
     if (!view.items.some(it => it.id === id && !it.mergedInto)) selected.delete(id);
@@ -580,7 +625,9 @@ function dupeMap() {
   for (const p of VIEW.similar) {
     for (const [self, other] of [[p.a, p.b], [p.b, p.a]]) {
       const cur = m.get(self);
-      if (!cur || p.score > cur.score) m.set(self, { other, score: p.score, level: p.level });
+      if (!cur || p.score > cur.score) {
+        m.set(self, { other, score: p.score, level: p.level, why: p.why });
+      }
     }
   }
   return m;
@@ -605,11 +652,30 @@ function visibleItems() {
 // 渲染
 // ═══════════════════════════════════════════════════════════════
 function render() {
+  renderApiButtons();
   renderWeeks();
   renderSources();
   renderItems();
   renderSummary();
   renderDraft();
+}
+
+// 接口没配好就把按钮禁掉，并把原因写进 title —— 让用户知道
+// 「为什么点不了」，比单纯灰掉一个按钮有用得多
+function renderApiButtons() {
+  const api = VIEW.api || { reports: {}, l1: {} };
+
+  $('pullBtn').disabled = !api.reports.enabled;
+  $('pullBtn').title = api.reports.enabled
+    ? `从 ${api.reports.url} 拉取本周周报`
+    : '未启用：在 config.json 里把 reports.enabled 改成 true 并填上内网地址';
+
+  $('enrichBtn').disabled = !api.l1.enabled;
+  $('enrichBtn').title = api.l1.enabled
+    ? (VIEW.l1RanAt
+        ? `上次分析：${new Date(VIEW.l1RanAt).toLocaleString('zh-CN')}`
+        : `调 ${api.l1.url} 做归类和同义判定`)
+    : '未启用：在 config.json 里把 l1.enabled 改成 true 并填上内网地址';
 }
 
 function renderWeeks() {
@@ -666,8 +732,16 @@ function renderItems() {
     const low = s.needsReview.includes(it.id);
     const st = STATUS_STYLE[it.status] || { icon: '○', cls: '' };
     const cls = ['item',
-      dup && dup.level === 'strong' ? 'dupe' : (low ? 'low' : ''),
+      dup && dup.level === 'semantic' ? 'semantic'
+        : dup && dup.level === 'strong' ? 'dupe'
+        : (low ? 'low' : ''),
       selected.has(it.id) ? 'picked' : ''].filter(Boolean).join(' ');
+
+    // 语义候选说的是「模型认为这两条是一回事」，跟字面相似度不是
+    // 一个量纲，所以不显示百分比，改显示模型给的理由
+    const dupTag = !dup ? '' : dup.level === 'semantic'
+      ? `<span class="tag info" title="${esc(dup.why || '')}">◈ 同义（模型判断）</span>`
+      : `<span class="tag crit">■ 相似 ${Math.round(dup.score * 100)}%</span>`;
 
     return `
     <div class="${cls}" data-id="${esc(it.id)}">
@@ -688,7 +762,8 @@ function renderItems() {
             ? `<span class="metric">${it.metrics.map(m => esc(m.value + m.unit)).join(' · ')}</span>`
             : '<span class="metric">无量化</span>'}
           ${low ? '<span class="tag warn">◆ 待复核</span>' : ''}
-          ${dup ? `<span class="tag crit">■ 相似 ${Math.round(dup.score * 100)}%</span>
+          ${it.l1 ? '<span class="tag info">◈ 模型改过</span>' : ''}
+          ${dup ? `${dupTag}
                    <button class="tiny" data-cmp="${esc(it.id)}|${esc(dup.other)}">对比</button>` : ''}
           ${it.mergedFrom.length
             ? `<span class="tag info">合并了 ${it.mergedFrom.length} 条</span>
@@ -882,8 +957,16 @@ function compare(idA, idB) {
       </div>
     </div>`;
 
-  $('dlgTitle').textContent = `相似度 ${pair ? Math.round(pair.score * 100) : '?'}%`;
+  const isSemantic = pair && pair.level === 'semantic';
+  $('dlgTitle').textContent = isSemantic
+    ? '模型判断为同一件事'
+    : `相似度 ${pair ? Math.round(pair.score * 100) : '?'}%`;
+
   $('dlgBody').innerHTML = `
+    ${isSemantic && pair.why
+      ? `<div style="margin-bottom:12px;padding:9px 11px;background:var(--normal-bg);
+           color:var(--normal);border-radius:7px;font-size:13px">模型给的理由：${esc(pair.why)}</div>`
+      : ''}
     <div class="cmp">${side(a, '条目 A')}${side(b, '条目 B')}</div>
     <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button data-merge-pair="${esc(idA)}|${esc(idB)}">保留 A，把 B 合并进来</button>
@@ -1013,6 +1096,10 @@ $('fText').oninput      = e => { filters.text = e.target.value; renderItems(); }
 
 // 切周
 $('weekSel').onchange = e => { selected.clear(); reload(e.target.value); };
+
+// 内网接口
+$('pullBtn').onclick   = () => runApi($('pullBtn'), '拉取中…', '/api/pull');
+$('enrichBtn').onclick = () => runApi($('enrichBtn'), '分析中…', '/api/enrich');
 
 // 导入：粘贴
 $('pasteBtn').onclick = async () => {

@@ -1,0 +1,21 @@
+{
+  "_说明": "内部接口配置。改完重启 server.js 生效。两处接口都不带认证——这是当前的明确决定；认证位在 lib/internal-api.js 的 authHeaders() 里预留好了，以后要加只改那一个函数。",
+
+  "reports": {
+    "_用途": "拉取各人提交的周报，替代手工粘贴/上传",
+    "_对接": "填好 url 后，若返回格式与预期不符，改 lib/internal-api.js 里的 normalizeReports()",
+    "enabled": false,
+    "url": "",
+    "timeoutMs": 10000
+  },
+
+  "l1": {
+    "_用途": "语义层：归类、同义条目判定。不可用时自动降级到 L0 规则层，页面照常能用",
+    "_对接": "按 OpenAI 兼容格式写的；网关格式不同就改 lib/internal-api.js 里的 callL1()",
+    "enabled": false,
+    "url": "",
+    "model": "",
+    "timeoutMs": 30000,
+    "batchSize": 40
+  }
+}
