@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>周报整理</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════
+     配色
+     跟生产看板刻意不同：看板是车间大屏常年通电，暗色是为了防眩光和
+     烧屏；这个页面是白天在工位上读大段文字的编辑工具，亮色底更适合
+     长时间阅读。同时跟随系统深色设置。
+     ═══════════════════════════════════════════════════════════ */
+  :root {
+    --plane:      #f6f5f2;
+    --surface:    #ffffff;
+    --sunken:     #efeee9;
+    --ink:        #1c1b18;
+    --ink-2:      #55534d;
+    --ink-muted:  #8b8880;
+    --hairline:   rgba(0,0,0,0.11);
+    --accent:     #3d6fd6;
+
+    --good:       #1a7f37;
+    --normal:     #2f6fd0;
+    --warning:    #9a6700;
+    --critical:   #b42318;
+
+    --good-bg:     rgba(26,127,55,0.10);
+    --normal-bg:   rgba(47,111,208,0.10);
+    --warning-bg:  rgba(154,103,0,0.12);
+    --critical-bg: rgba(180,35,24,0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --plane:     #16161a;
+      --surface:   #1e1e22;
+      --sunken:    #131316;
+      --ink:       #f2f1ee;
+      --ink-2:     #b8b6b0;
+      --ink-muted: #86847e;
+      --hairline:  rgba(255,255,255,0.13);
+      --accent:    #7aa2f0;
+
+      --good:      #55c46e;
+      --normal:    #7aa2f0;
+      --warning:   #e0b341;
+      --critical:  #f0736a;
+
+      --good-bg:     rgba(85,196,110,0.13);
+      --normal-bg:   rgba(122,162,240,0.13);
+      --warning-bg:  rgba(224,179,65,0.14);
+      --critical-bg: rgba(240,115,106,0.13);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--plane);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei",
+                 "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  button, select, input, textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 5px 11px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); color: #fff; }
+  button.tiny { padding: 2px 7px; font-size: 12px; border-radius: 5px; }
+
+  /* ── 顶栏 ───────────────────────────────────────────────── */
+  header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: .02em; }
+  header select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--hairline); background: var(--surface); }
+  .spacer { margin-left: auto; }
+  .save-state { font-size: 12px; color: var(--ink-muted); }
+  .save-state.saving { color: var(--warning); }
+  .save-state.error  { color: var(--critical); }
+
+  /* ── 三栏 ───────────────────────────────────────────────── */
+  main {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr) 268px;
+  }
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 1fr; grid-auto-rows: min-content; overflow-y: auto; }
+    main > section { max-height: none !important; }
+  }
+
+  main > section {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+    border-right: 1px solid var(--hairline);
+  }
+  main > section:last-child { border-right: none; }
+
+  .pane-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: var(--ink-muted);
+    margin: 0 0 10px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .pane-title .n { color: var(--ink-2); font-weight: 500; }
+
+  /* ── 左栏：素材 ─────────────────────────────────────────── */
+  .source {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 9px;
+    border: 1px solid var(--hairline);
+    border-radius: 7px;
+    background: var(--surface);
+    margin-bottom: 7px;
+  }
+  .source .body { flex: 1; min-width: 0; }
+  .source .nm {
+    font-weight: 500;
+    word-break: break-all;
+  }
+  .source .meta { font-size: 12px; color: var(--ink-muted); }
+
+  .dropzone {
+    margin-top: 10px;
+    border: 1.5px dashed var(--hairline);
+    border-radius: 8px;
+    padding: 14px 10px;
+    text-align: center;
+    color: var(--ink-muted);
+    font-size: 13px;
+    transition: .15s;
+  }
+  .dropzone.over { border-color: var(--accent); color: var(--accent); background: var(--surface); }
+
+  .paste-box {
+    width: 100%;
+    margin-top: 8px;
+    min-height: 84px;
+    padding: 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 7px;
+    background: var(--surface);
+    resize: vertical;
+  }
+  .paste-row { display: flex; gap: 6px; margin-top: 6px; }
+  .paste-row input {
+    flex: 1; min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  /* ── 中栏：条目 ─────────────────────────────────────────── */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .filters select, .filters input {
+    padding: 4px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .filters input { flex: 1; min-width: 110px; }
+
+  .bulkbar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    margin-bottom: 9px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 7px;
+    font-size: 13px;
+  }
+  .bulkbar.show { display: flex; }
+  .bulkbar button { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.4); color: #fff; }
+  .bulkbar button:hover:not(:disabled) { background: rgba(255,255,255,.28); color: #fff; border-color: #fff; }
+
+  .item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 9px;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+  }
+  /* 低置信度：机器不确定，需要人看一眼。用左侧色条 + 文字标注，
+     不只靠颜色 —— 红绿色盲约占男性 8% */
+  .item.low  { border-left: 3px solid var(--warning); }
+  .item.dupe { border-left: 3px solid var(--critical); }
+  .item.picked { box-shadow: 0 0 0 2px var(--accent); }
+
+  .item input[type=checkbox] { margin-top: 5px; width: 15px; height: 15px; }
+
+  .item-text {
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    padding: 3px 5px;
+    resize: vertical;
+    min-height: 2.6em;
+    line-height: 1.5;
+  }
+  .item-text:hover { border-color: var(--hairline); }
+  .item-text:focus { border-color: var(--accent); outline: none; background: var(--plane); }
+
+  .item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  .item-meta select, .item-meta input {
+    padding: 2px 6px;
+    border: 1px solid var(--hairline);
+    border-radius: 5px;
+    background: var(--plane);
+    font-size: 12px;
+  }
+  .item-meta input { width: 78px; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: .35em;
+    padding: 1px 7px;
+    border-radius: 20px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .tag.warn { background: var(--warning-bg); color: var(--warning); }
+  .tag.crit { background: var(--critical-bg); color: var(--critical); }
+  .tag.ok   { background: var(--good-bg);    color: var(--good); }
+  .tag.info { background: var(--normal-bg);  color: var(--normal); }
+
+  .metric { color: var(--ink-muted); }
+  .push { margin-left: auto; }
+
+  .empty {
+    padding: 30px 14px;
+    text-align: center;
+    color: var(--ink-muted);
+    font-size: 13px;
+  }
+
+  /* ── 右栏：概况 ─────────────────────────────────────────── */
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 10px 11px;
+    margin-bottom: 8px;
+  }
+  .stat .k { font-size: 12px; color: var(--ink-muted); }
+  .stat .v { font-size: 26px; font-weight: 600; line-height: 1.15; }
+  .stat .v small { font-size: 13px; font-weight: 500; color: var(--ink-muted); }
+
+  .bars { margin: 0; padding: 0; list-style: none; }
+  .bars li {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    font-size: 13px;
+    padding: 2px 0;
+  }
+  .bars .bar {
+    grid-column: 1 / -1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--accent);
+    opacity: .55;
+  }
+
+  .stage-note {
+    margin-top: 12px;
+    padding: 9px 10px;
+    border: 1px dashed var(--hairline);
+    border-radius: 7px;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  /* ── 底部草稿 ───────────────────────────────────────────── */
+  footer {
+    flex: none;
+    border-top: 1px solid var(--hairline);
+    background: var(--surface);
+    max-height: 34vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .draft-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .draft-head .pane-title { margin: 0; }
+  #draft {
+    flex: 1;
+    margin: 0;
+    padding: 12px 14px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, "Cascadia Code", Consolas, "Noto Sans Mono CJK SC", monospace;
+    font-size: 12.5px;
+    line-height: 1.62;
+    background: var(--sunken);
+  }
+  footer.collapsed #draft { display: none; }
+
+  /* ── 弹层：回溯原文 / 相似对比 ─────────────────────────── */
+  dialog {
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 0;
+    background: var(--surface);
+    color: var(--ink);
+    max-width: min(760px, 92vw);
+    width: 100%;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.42); }
+  .dlg-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 15px;
+    border-bottom: 1px solid var(--hairline);
+    font-weight: 600;
+  }
+  .dlg-body { padding: 14px 15px; max-height: 62vh; overflow: auto; }
+  .raw {
+    white-space: pre-wrap;
+    font-family: ui-monospace, Consolas, "Noto Sans Mono CJK SC", monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: var(--sunken);
+    padding: 12px;
+    border-radius: 7px;
+  }
+  .raw mark {
+    background: var(--warning-bg);
+    color: inherit;
+    border-bottom: 2px solid var(--warning);
+    padding: 1px 0;
+  }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 620px) { .cmp { grid-template-columns: 1fr; } }
+  .cmp .side {
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 11px;
+  }
+  .cmp .side h4 { margin: 0 0 6px; font-size: 12px; color: var(--ink-muted); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>周报整理</h1>
+  <select id="weekSel" title="切换周"></select>
+  <span class="spacer"></span>
+  <span class="save-state" id="saveState">就绪</span>
+</header>
+
+<main>
+  <!-- ══ 左：素材来源 ══ -->
+  <section>
+    <h2 class="pane-title">素材来源 <span class="n" id="srcCount"></span></h2>
+    <div id="sources"></div>
+
+    <div class="dropzone" id="drop">拖入 .txt / .md / .csv<br>或粘贴到下面</div>
+
+    <textarea class="paste-box" id="pasteBox"
+              placeholder="把周报内容粘到这里……&#10;&#10;支持：&#10;- 项目符号列表&#10;- 「张三：完成了原型」这类署名&#10;- ## 标题 / 【项目名】 作为分组"></textarea>
+    <div class="paste-row">
+      <input id="pasteAuthor" placeholder="提交人（可选）">
+      <button class="primary" id="pasteBtn">导入</button>
+    </div>
+  </section>
+
+  <!-- ══ 中：结构化条目 ══ -->
+  <section>
+    <h2 class="pane-title">结构化条目 <span class="n" id="itemCount"></span></h2>
+
+    <div class="filters">
+      <select id="fOwner"><option value="">全部人员</option></select>
+      <select id="fCategory">
+        <option value="">全部类别</option>
+        <option>进展</option><option>问题</option><option>计划</option>
+        <option>风险</option><option>数据</option>
+      </select>
+      <select id="fFlag">
+        <option value="">全部条目</option>
+        <option value="review">待复核</option>
+        <option value="dupe">疑似重复</option>
+        <option value="blocked">阻塞项</option>
+        <option value="nometric">无量化</option>
+      </select>
+      <input id="fText" placeholder="搜索正文…">
+    </div>
+
+    <div class="bulkbar" id="bulkbar">
+      <span id="bulkText"></span>
+      <span class="spacer"></span>
+      <button class="tiny" id="mergeBtn">合并为一条</button>
+      <button class="tiny" id="clearSel">取消选择</button>
+    </div>
+
+    <div id="items"></div>
+  </section>
+
+  <!-- ══ 右：本周概况 ══ -->
+  <section>
+    <h2 class="pane-title">本周概况</h2>
+    <div id="summary"></div>
+
+    <div class="stage-note">
+      覆盖度、周对比、滞留项属于<strong>阶段 4</strong>，需要人员名单和至少两周历史数据，暂未实现。
+    </div>
+  </section>
+</main>
+
+<footer id="draftFooter">
+  <div class="draft-head">
+    <span class="pane-title">周报草稿</span>
+    <span class="spacer"></span>
+    <button class="tiny" id="copyBtn">复制</button>
+    <button class="tiny" id="mdBtn">导出 .md</button>
+    <button class="tiny" id="csvBtn">导出 .csv</button>
+    <button class="tiny" id="foldBtn">收起</button>
+  </div>
+  <pre id="draft"></pre>
+</footer>
+
+<dialog id="dlg">
+  <div class="dlg-head">
+    <span id="dlgTitle"></span>
+    <span class="spacer"></span>
+    <button class="tiny" onclick="document.getElementById('dlg').close()">关闭</button>
+  </div>
+  <div class="dlg-body" id="dlgBody"></div>
+</dialog>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+// 全局状态
+// ═══════════════════════════════════════════════════════════════
+let VIEW = null;                      // 后端返回的整份视图
+let WEEK = '';
+const selected = new Set();           // 勾选中的条目 id
+const filters = { owner: '', category: '', flag: '', text: '' };
+
+const CATEGORIES = ['进展', '问题', '计划', '风险', '数据'];
+const STATUSES   = ['已完成', '进行中', '阻塞', '未开始'];
+
+// 状态标记：形状 + 文字，不单靠颜色区分
+const STATUS_STYLE = {
+  '已完成': { icon: '●', cls: 'ok'   },
+  '进行中': { icon: '▶', cls: 'info' },
+  '阻塞':   { icon: '■', cls: 'crit' },
+  '未开始': { icon: '◇', cls: ''     },
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// ═══════════════════════════════════════════════════════════════
+// 与后端通信
+//
+// 每次写操作后端都返回完整视图，前端整体重渲染。数据量在几百条
+// 级别，重渲染的开销远小于维护增量更新的复杂度和出错概率。
+// ═══════════════════════════════════════════════════════════════
+function setSave(text, cls) {
+  const el = $('saveState');
+  el.textContent = text;
+  el.className = 'save-state' + (cls ? ' ' + cls : '');
+}
+
+async function api(method, path, body) {
+  setSave('保存中…', 'saving');
+  try {
+    const res = await fetch(path, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify({ ...body, week: WEEK }) : undefined,
+    });
+    const data = await res.json();
+    // fetch 不会因为 4xx/5xx 而 reject，必须自己检查
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    setSave('已保存');
+    return data;
+  } catch (err) {
+    setSave('保存失败：' + err.message, 'error');
+    throw err;
+  }
+}
+
+async function reload(week) {
+  const w = week || WEEK || '';
+  const res = await fetch('/api/state' + (w ? '?week=' + encodeURIComponent(w) : ''));
+  if (!res.ok) { setSave('加载失败', 'error'); return; }
+  apply(await res.json());
+}
+
+function apply(view) {
+  VIEW = view;
+  WEEK = view.week;
+  // 已经不存在的条目要从选择集里剔掉，否则合并按钮会指向幽灵 id
+  for (const id of [...selected]) {
+    if (!view.items.some(it => it.id === id && !it.mergedInto)) selected.delete(id);
+  }
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 派生：当前可见的条目
+// ═══════════════════════════════════════════════════════════════
+function liveItems() {
+  return VIEW.items.filter(it => !it.mergedInto);
+}
+
+// 条目 id → 它参与的最高相似度候选
+function dupeMap() {
+  const m = new Map();
+  for (const p of VIEW.similar) {
+    for (const [self, other] of [[p.a, p.b], [p.b, p.a]]) {
+      const cur = m.get(self);
+      if (!cur || p.score > cur.score) m.set(self, { other, score: p.score, level: p.level });
+    }
+  }
+  return m;
+}
+
+function visibleItems() {
+  const dupes = dupeMap();
+  const s = VIEW.summary;
+  return liveItems().filter(it => {
+    if (filters.owner && it.owner !== filters.owner) return false;
+    if (filters.category && it.category !== filters.category) return false;
+    if (filters.text && !it.text.toLowerCase().includes(filters.text.toLowerCase())) return false;
+    if (filters.flag === 'review'   && !s.needsReview.includes(it.id)) return false;
+    if (filters.flag === 'dupe'     && !dupes.has(it.id)) return false;
+    if (filters.flag === 'blocked'  && it.status !== '阻塞') return false;
+    if (filters.flag === 'nometric' && !s.noMetrics.includes(it.id)) return false;
+    return true;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 渲染
+// ═══════════════════════════════════════════════════════════════
+function render() {
+  renderWeeks();
+  renderSources();
+  renderItems();
+  renderSummary();
+  renderDraft();
+}
+
+function renderWeeks() {
+  const weeks = [...new Set([WEEK, ...VIEW.weeks])].sort().reverse();
+  $('weekSel').innerHTML = weeks
+    .map(w => `<option value="${esc(w)}"${w === WEEK ? ' selected' : ''}>${esc(w)}</option>`)
+    .join('');
+}
+
+function renderSources() {
+  const list = VIEW.sources;
+  $('srcCount').textContent = list.length ? list.length + ' 份' : '';
+  $('sources').innerHTML = list.length ? list.map(s => `
+    <div class="source">
+      <div class="body">
+        <div class="nm">${esc(s.name)}</div>
+        <div class="meta">
+          ${s.author ? esc(s.author) + ' · ' : ''}${s.itemCount} 条 · ${s.chars} 字
+        </div>
+      </div>
+      <button class="tiny" data-del-src="${esc(s.id)}" title="删除这份素材及其条目">删</button>
+    </div>
+  `).join('') : '<div class="empty">还没有素材</div>';
+}
+
+function renderItems() {
+  const all = liveItems();
+  const shown = visibleItems();
+  const dupes = dupeMap();
+  const s = VIEW.summary;
+
+  $('itemCount').textContent = shown.length === all.length
+    ? (all.length ? all.length + ' 条' : '')
+    : `${shown.length} / ${all.length} 条`;
+
+  // 人员筛选下拉：从实际数据里取，不写死
+  const owners = [...new Set(all.map(it => it.owner).filter(Boolean))].sort();
+  $('fOwner').innerHTML = '<option value="">全部人员</option>' +
+    owners.map(o => `<option${o === filters.owner ? ' selected' : ''}>${esc(o)}</option>`).join('');
+
+  if (!all.length) {
+    $('items').innerHTML = '<div class="empty">左边导入素材后，条目会自动出现在这里</div>';
+    renderBulkbar();
+    return;
+  }
+  if (!shown.length) {
+    $('items').innerHTML = '<div class="empty">当前筛选下没有条目</div>';
+    renderBulkbar();
+    return;
+  }
+
+  $('items').innerHTML = shown.map(it => {
+    const dup = dupes.get(it.id);
+    const low = s.needsReview.includes(it.id);
+    const st = STATUS_STYLE[it.status] || { icon: '○', cls: '' };
+    const cls = ['item',
+      dup && dup.level === 'strong' ? 'dupe' : (low ? 'low' : ''),
+      selected.has(it.id) ? 'picked' : ''].filter(Boolean).join(' ');
+
+    return `
+    <div class="${cls}" data-id="${esc(it.id)}">
+      <input type="checkbox" data-pick="${esc(it.id)}" ${selected.has(it.id) ? 'checked' : ''}>
+      <div>
+        <textarea class="item-text" data-text="${esc(it.id)}" rows="1">${esc(it.text)}</textarea>
+        <div class="item-meta">
+          <input data-f="owner"   data-id="${esc(it.id)}" value="${esc(it.owner)}"   placeholder="谁">
+          <input data-f="project" data-id="${esc(it.id)}" value="${esc(it.project)}" placeholder="项目">
+          <select data-f="category" data-id="${esc(it.id)}">
+            ${CATEGORIES.map(c => `<option${c === it.category ? ' selected' : ''}>${c}</option>`).join('')}
+          </select>
+          <select data-f="status" data-id="${esc(it.id)}">
+            ${STATUSES.map(c => `<option${c === it.status ? ' selected' : ''}>${c}</option>`).join('')}
+          </select>
+          <span class="tag ${st.cls}">${st.icon} ${esc(it.status)}</span>
+          ${it.metrics.length
+            ? `<span class="metric">${it.metrics.map(m => esc(m.value + m.unit)).join(' · ')}</span>`
+            : '<span class="metric">无量化</span>'}
+          ${low ? '<span class="tag warn">◆ 待复核</span>' : ''}
+          ${dup ? `<span class="tag crit">■ 相似 ${Math.round(dup.score * 100)}%</span>
+                   <button class="tiny" data-cmp="${esc(it.id)}|${esc(dup.other)}">对比</button>` : ''}
+          ${it.mergedFrom.length
+            ? `<span class="tag info">合并了 ${it.mergedFrom.length} 条</span>
+               <button class="tiny" data-unmerge="${esc(it.id)}">撤销</button>` : ''}
+          <span class="push"></span>
+          <button class="tiny" data-trace="${esc(it.id)}" title="看这条是从原文哪句话来的">原文</button>
+          ${low ? `<button class="tiny" data-ok="${esc(it.id)}">标为已核</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // textarea 高度按内容自适应，避免长条目被截断成一行看不全
+  for (const ta of document.querySelectorAll('.item-text')) autoGrow(ta);
+  renderBulkbar();
+}
+
+function autoGrow(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight + 2) + 'px';
+}
+
+function renderBulkbar() {
+  const bar = $('bulkbar');
+  bar.classList.toggle('show', selected.size > 0);
+  $('bulkText').textContent = `已选 ${selected.size} 条`;
+  $('mergeBtn').disabled = selected.size < 2;
+}
+
+function renderSummary() {
+  const s = VIEW.summary;
+  const bars = (rows, total) => rows.length ? `<ul class="bars">${rows.map(([k, v]) => `
+    <li><span>${esc(k)}</span><span>${v}</span>
+    <span class="bar" style="width:${total ? Math.round(v / total * 100) : 0}%"></span></li>`).join('')}</ul>`
+    : '<div style="color:var(--ink-muted);font-size:13px">—</div>';
+
+  $('summary').innerHTML = `
+    <div class="stat">
+      <div class="k">条目总数</div>
+      <div class="v">${s.total}</div>
+    </div>
+
+    <div class="stat">
+      <div class="k">按人员</div>
+      ${bars(s.byOwner, s.total)}
+    </div>
+
+    <div class="stat">
+      <div class="k">按类别</div>
+      ${bars(s.byCategory, s.total)}
+    </div>
+
+    <div class="stat">
+      <div class="k">阻塞项</div>
+      <div class="v" style="color:${s.blocked.length ? 'var(--critical)' : 'inherit'}">${s.blocked.length}</div>
+    </div>
+
+    <div class="stat">
+      <div class="k">无量化条目</div>
+      <div class="v">${s.noMetrics.length} <small>${s.noMetricsRate}%</small></div>
+    </div>
+
+    <div class="stat">
+      <div class="k">待复核（机器不确定）</div>
+      <div class="v" style="color:${s.needsReview.length ? 'var(--warning)' : 'inherit'}">${s.needsReview.length}</div>
+    </div>
+
+    <div class="stat">
+      <div class="k">疑似重复</div>
+      <div class="v">${s.duplicateStrong} <small>强 · ${s.duplicateWeak} 弱</small></div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 草稿
+//
+// 末尾附一段「待补充」，是给写周报的人自己看的 —— 哪些条目没数字、
+// 哪些还没复核。正式发出去之前删掉即可。
+// ═══════════════════════════════════════════════════════════════
+function buildDraft() {
+  const items = liveItems();
+  if (!items.length) return '（还没有条目）';
+
+  const lines = [`# 周报 ${WEEK}`, ''];
+
+  const SECTIONS = [
+    ['进展', '## 本周进展'],
+    ['问题', '## 问题与阻塞'],
+    ['风险', '## 风险'],
+    ['计划', '## 下周计划'],
+    ['数据', '## 数据'],
+  ];
+
+  for (const [cat, title] of SECTIONS) {
+    const group = items.filter(it => it.category === cat);
+    if (!group.length) continue;
+    lines.push(title);
+
+    const byOwner = new Map();
+    for (const it of group) {
+      const k = it.owner || '（未署名）';
+      if (!byOwner.has(k)) byOwner.set(k, []);
+      byOwner.get(k).push(it);
+    }
+    for (const [owner, list] of byOwner) {
+      lines.push(`### ${owner}`);
+      for (const it of list) {
+        const prj = it.project ? `【${it.project}】` : '';
+        const flag = it.status === '阻塞' ? ' ⚠阻塞' : '';
+        lines.push(`- ${prj}${it.text}${flag}`);
+      }
+      lines.push('');
+    }
+  }
+
+  const s = VIEW.summary;
+  const todo = [];
+  if (s.noMetrics.length) todo.push(`- ${s.noMetrics.length} 条没有量化结果（占 ${s.noMetricsRate}%），发出前建议补上数字`);
+  if (s.needsReview.length) todo.push(`- ${s.needsReview.length} 条机器识别把握不大，建议人工确认`);
+  if (s.duplicateStrong) todo.push(`- ${s.duplicateStrong} 组疑似重复未处理`);
+  if (s.blocked.length) todo.push(`- ${s.blocked.length} 条阻塞项，确认是否需要向上反馈`);
+
+  if (todo.length) {
+    lines.push('---', '', '## 待补充（发出前删掉这一段）', ...todo);
+  }
+
+  return lines.join('\n');
+}
+
+function renderDraft() { $('draft').textContent = buildDraft(); }
+
+function download(name, text, mime) {
+  const url = URL.createObjectURL(new Blob(['﻿' + text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildCsv() {
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['周', '人员', '项目', '类别', '状态', '内容', '量化', '置信度'];
+  const rows = liveItems().map(it => [
+    WEEK, it.owner, it.project, it.category, it.status, it.text,
+    it.metrics.map(m => m.value + m.unit).join(' '), it.confidence,
+  ].map(q).join(','));
+  return [head.map(q).join(','), ...rows].join('\r\n');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 弹层：回溯原文 / 相似对比
+//
+// 「点得回原文」是整个页面可信度的地基。用户不能验证一条结构化条目
+// 是从哪句话抽出来的，他就不会信任右边的任何分析结论。
+// ═══════════════════════════════════════════════════════════════
+async function traceOriginal(id) {
+  const item = VIEW.items.find(it => it.id === id);
+  if (!item) return;
+
+  const res = await fetch(`/api/source?id=${encodeURIComponent(item.sourceId)}&week=${encodeURIComponent(WEEK)}`);
+  if (!res.ok) { alert('取原文失败'); return; }
+  const src = await res.json();
+
+  const [a, b] = item.range;
+  const html = esc(src.raw.slice(0, a))
+             + '<mark>' + esc(src.raw.slice(a, b)) + '</mark>'
+             + esc(src.raw.slice(b));
+
+  $('dlgTitle').textContent = '原文 · ' + src.name;
+  $('dlgBody').innerHTML = `<div class="raw">${html}</div>`;
+  $('dlg').showModal();
+  // 滚到高亮处，长文件里不用自己找
+  const mark = $('dlgBody').querySelector('mark');
+  if (mark) mark.scrollIntoView({ block: 'center' });
+}
+
+function compare(idA, idB) {
+  const a = VIEW.items.find(it => it.id === idA);
+  const b = VIEW.items.find(it => it.id === idB);
+  if (!a || !b) return;
+  const pair = VIEW.similar.find(p =>
+    (p.a === idA && p.b === idB) || (p.a === idB && p.b === idA));
+
+  const side = (it, label) => `
+    <div class="side">
+      <h4>${label}</h4>
+      <div>${esc(it.text)}</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--ink-muted)">
+        ${esc(it.owner || '未署名')}${it.project ? ' · ' + esc(it.project) : ''} · ${esc(it.category)} · ${esc(it.status)}
+      </div>
+    </div>`;
+
+  $('dlgTitle').textContent = `相似度 ${pair ? Math.round(pair.score * 100) : '?'}%`;
+  $('dlgBody').innerHTML = `
+    <div class="cmp">${side(a, '条目 A')}${side(b, '条目 B')}</div>
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button data-merge-pair="${esc(idA)}|${esc(idB)}">保留 A，把 B 合并进来</button>
+      <button data-merge-pair="${esc(idB)}|${esc(idA)}">保留 B，把 A 合并进来</button>
+      <span style="font-size:12px;color:var(--ink-muted)">合并后可随时撤销，原始素材不会被改动</span>
+    </div>`;
+  $('dlg').showModal();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 交互
+// 用事件委托，避免每次重渲染都要重新绑一堆监听器
+// ═══════════════════════════════════════════════════════════════
+
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('button');
+  if (!t) return;
+
+  if (t.dataset.delSrc) {
+    const src = VIEW.sources.find(s => s.id === t.dataset.delSrc);
+    if (!confirm(`删除「${src ? src.name : ''}」及其 ${src ? src.itemCount : 0} 条条目？`)) return;
+    apply(await api('DELETE', '/api/sources', { id: t.dataset.delSrc }));
+    return;
+  }
+
+  if (t.dataset.trace) { traceOriginal(t.dataset.trace); return; }
+
+  if (t.dataset.cmp) {
+    const [a, b] = t.dataset.cmp.split('|');
+    compare(a, b);
+    return;
+  }
+
+  if (t.dataset.mergePair) {
+    const [keep, drop] = t.dataset.mergePair.split('|');
+    $('dlg').close();
+    apply(await api('POST', '/api/items/merge', { targetId: keep, sourceIds: [drop] }));
+    return;
+  }
+
+  if (t.dataset.unmerge) {
+    apply(await api('POST', '/api/items/unmerge', { id: t.dataset.unmerge }));
+    return;
+  }
+
+  if (t.dataset.ok) {
+    apply(await api('PATCH', '/api/items', { id: t.dataset.ok, patch: { reviewed: true } }));
+    return;
+  }
+});
+
+// 勾选
+document.addEventListener('change', async (e) => {
+  const el = e.target;
+
+  if (el.dataset.pick) {
+    if (el.checked) selected.add(el.dataset.pick); else selected.delete(el.dataset.pick);
+    el.closest('.item').classList.toggle('picked', el.checked);
+    renderBulkbar();
+    return;
+  }
+
+  // 下拉改类别/状态
+  if (el.dataset.f && el.tagName === 'SELECT') {
+    apply(await api('PATCH', '/api/items', {
+      id: el.dataset.id,
+      patch: { [el.dataset.f]: el.value, reviewed: true },
+    }));
+  }
+});
+
+// 文本框失焦才保存 —— 每敲一个字就发请求既没必要也会把日志刷爆
+document.addEventListener('focusout', async (e) => {
+  const el = e.target;
+
+  if (el.dataset.text) {
+    const item = VIEW.items.find(it => it.id === el.dataset.text);
+    if (!item || el.value.trim() === item.text) return;
+    if (!el.value.trim()) { el.value = item.text; return; }   // 不允许清空
+    apply(await api('PATCH', '/api/items', {
+      id: el.dataset.text,
+      patch: { text: el.value.trim(), reviewed: true },
+    }));
+    return;
+  }
+
+  if (el.dataset.f && el.tagName === 'INPUT') {
+    const item = VIEW.items.find(it => it.id === el.dataset.id);
+    if (!item || el.value === item[el.dataset.f]) return;
+    apply(await api('PATCH', '/api/items', {
+      id: el.dataset.id,
+      patch: { [el.dataset.f]: el.value.trim() },
+    }));
+  }
+});
+
+document.addEventListener('input', e => {
+  if (e.target.classList.contains('item-text')) autoGrow(e.target);
+});
+
+// 合并
+$('mergeBtn').onclick = async () => {
+  const ids = [...selected];
+  if (ids.length < 2) return;
+  // 第一条作为保留目标：置信度最高的那条通常信息最全
+  const sorted = ids
+    .map(id => VIEW.items.find(it => it.id === id))
+    .filter(Boolean)
+    .sort((a, b) => b.confidence - a.confidence || b.text.length - a.text.length);
+
+  if (!confirm(`把 ${ids.length} 条合并成一条？\n\n保留：${sorted[0].text}\n\n合并后可撤销，原始素材不受影响。`)) return;
+
+  selected.clear();
+  apply(await api('POST', '/api/items/merge', {
+    targetId: sorted[0].id,
+    sourceIds: sorted.slice(1).map(it => it.id),
+  }));
+};
+
+$('clearSel').onclick = () => { selected.clear(); render(); };
+
+// 筛选
+$('fOwner').onchange    = e => { filters.owner = e.target.value; renderItems(); };
+$('fCategory').onchange = e => { filters.category = e.target.value; renderItems(); };
+$('fFlag').onchange     = e => { filters.flag = e.target.value; renderItems(); };
+$('fText').oninput      = e => { filters.text = e.target.value; renderItems(); };
+
+// 切周
+$('weekSel').onchange = e => { selected.clear(); reload(e.target.value); };
+
+// 导入：粘贴
+$('pasteBtn').onclick = async () => {
+  const raw = $('pasteBox').value;
+  if (!raw.trim()) { $('pasteBox').focus(); return; }
+  const author = $('pasteAuthor').value.trim();
+  apply(await api('POST', '/api/sources', {
+    kind: 'paste',
+    name: author ? `${author} 的粘贴` : '粘贴内容',
+    author, raw,
+  }));
+  $('pasteBox').value = '';
+};
+
+// 导入：拖文件
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+
+drop.addEventListener('drop', async e => {
+  for (const file of e.dataTransfer.files) {
+    if (!/\.(txt|md|csv|log)$/i.test(file.name)) {
+      alert(`暂不支持 ${file.name}\n\n一期支持 .txt / .md / .csv。\nExcel 请先另存为 CSV —— 零依赖前提下手写 xlsx 解析不现实，放到二期再评估。`);
+      continue;
+    }
+    const raw = await file.text();
+    apply(await api('POST', '/api/sources', {
+      kind: 'file',
+      name: file.name,
+      author: file.name.replace(/\.[^.]+$/, '').split(/[-_ ]/)[0],   // 「张三-0728.txt」→ 张三
+      raw,
+    }));
+  }
+});
+
+// 也支持直接往拖放区粘贴
+drop.addEventListener('click', () => $('pasteBox').focus());
+
+// 草稿导出
+$('copyBtn').onclick = async () => {
+  await navigator.clipboard.writeText(buildDraft());
+  $('copyBtn').textContent = '已复制';
+  setTimeout(() => { $('copyBtn').textContent = '复制'; }, 1400);
+};
+$('mdBtn').onclick  = () => download(`周报-${WEEK}.md`, buildDraft(), 'text/markdown;charset=utf-8');
+$('csvBtn').onclick = () => download(`周报-${WEEK}.csv`, buildCsv(), 'text/csv;charset=utf-8');
+$('foldBtn').onclick = () => {
+  const f = $('draftFooter');
+  f.classList.toggle('collapsed');
+  $('foldBtn').textContent = f.classList.contains('collapsed') ? '展开' : '收起';
+};
+
+// ═══════════════════════════════════════════════════════════════
+reload();
+</script>
+</body>
+</html>
