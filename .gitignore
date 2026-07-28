@@ -7,6 +7,10 @@
 # 目录不需要手工建，server.js 启动时会自动创建。
 data/
 
+# 本地配置：要填 OA 账号密码，绝不能进版本库。
+# 模板是 config.example.json，首次启动 server.js 会自动复制一份。
+config.json
+
 # 编辑器和系统临时文件
 # ~$ 开头的是 Office 打开文档时留下的锁文件
 ~$*

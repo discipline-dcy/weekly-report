@@ -19,7 +19,9 @@ node server.js
 ```
 weekly-report/
 ├── server.js             后端：HTTP + JSON 落盘
-├── config.json           内部接口配置（地址、开关、超时）
+├── config.example.json   配置模板（凭据永远为空，进版本库）
+├── config.json           本地配置（填 OA 密码，不进版本库；首次启动自动生成）
+├── docs/                 接口需求文档
 ├── lib/l0.js             L0 规则层：切分/分类/抽数/去重（纯函数，可单独测）
 ├── lib/internal-api.js   内部接口客户端：拉周报 + L1 语义层
 ├── index.html            三栏工作台页面
@@ -28,9 +30,21 @@ weekly-report/
 
 ## 接入内部接口
 
-两处都走内网，**均不带认证**（当前明确决定；认证位已在 `lib/internal-api.js` 的 `authHeaders()` 预留，以后要加只改那一个函数）。
+接口需求文档：**[docs/接口文档-获取周报.md](docs/接口文档-获取周报.md)**，按公司《0. 接口文件模板》编写，可直接发给 OA 维护人。
 
-编辑 `config.json`，填地址并把 `enabled` 改成 `true`，重启服务：
+### 配置
+
+首次启动 `server.js` 会从 `config.example.json` 自动生成 `config.json`。**改后者**，填地址和凭据，重启生效。
+
+> `config.json` **不进版本库**——里面要填 OA 密码。模板 `config.example.json` 里凭据永远为空。
+
+### 鉴权
+
+OA 用的是**请求参数鉴权**（`userCode` + `password` 拼进 query），不是 HTTP 头。这是模板里的硬性规定。
+
+配置里凭据留空 = 不带凭据；填上就自动带，代码不用改。留空时调用会被 OA 拒绝，页面上会显示 OA 返回的原话（如「缺少必填参数：userCode / password」），而不是一句含糊的失败。
+
+### 两个入口
 
 | 配置项 | 用途 | 页面上的入口 |
 |---|---|---|
@@ -45,7 +59,7 @@ weekly-report/
 
 | 函数 | 什么时候要改 |
 |---|---|
-| `normalizeReports()` | 周报接口的返回字段名跟预期不同。现在已认 `data/list/items/result` 数组，以及 `author/name/userName/submitter` 等常见人名字段 |
+| `normalizeReports()` | 周报接口的返回字段名跟接口文档不同。已按文档处理 `{code, message, data}` 信封（`code` 非 0 抛出 OA 的错误原话），并认 `userName`/`content` 等字段 |
 | `callL1()` | 模型网关不是 OpenAI 兼容格式 |
 
 其余代码（超时、降级、错误处理、上层调用、页面）一律不用动。

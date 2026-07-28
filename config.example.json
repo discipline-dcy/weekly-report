@@ -1,0 +1,26 @@
+{
+  "_说明": "配置模板。首次启动 server.js 会自动复制成 config.json，改那一份即可（config.json 不进版本库，密码不会被提交）。",
+
+  "reports": {
+    "_用途": "从 OA 拉各人提交的周报，替代手工粘贴/上传",
+    "_接口文档": "docs/接口文档-获取周报.md（按《0. 接口文件模板》编写）",
+    "_鉴权": "OA 是请求参数鉴权（userCode + password 拼进 query），不是 HTTP 头。留空 = 不带凭据；填上就自动带，代码不用改。",
+    "enabled": false,
+    "url": "http://192.168.0.249/RibaoOA/api/OAWebApi/GetWeeklyReport",
+    "userCode": "",
+    "password": "",
+    "timeoutMs": 10000
+  },
+
+  "l1": {
+    "_用途": "语义层：归类、同义条目判定。不可用时自动降级到 L0 规则层，页面照常能用",
+    "_说明": "模型网关不是 OA 系统，不套用 OA 的接口模板。若它也走参数鉴权，填 userCode/password 即可。",
+    "enabled": false,
+    "url": "",
+    "userCode": "",
+    "password": "",
+    "model": "",
+    "timeoutMs": 30000,
+    "batchSize": 40
+  }
+}

@@ -443,11 +443,18 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  // 启动时就把配置读一遍（顺带在缺失时从模板生成），而不是等第一个请求。
+  // 否则用户启动完看不到任何提示，也不知道该去改哪个文件。
+  const api = API.status();
+
   console.log('─'.repeat(52));
   console.log('  周报整理已启动');
   console.log(`  页面：    http://localhost:${PORT}`);
   console.log(`  数据目录：${DATA_DIR}`);
   console.log(`  当前周：  ${L0.isoWeek()}`);
+  console.log(`  周报接口：${api.reports.enabled ? api.reports.url : '未启用（改 config.json）'}`);
+  console.log(`  语义分析：${api.l1.enabled ? api.l1.url : '未启用（改 config.json）'}`);
   console.log('  按 Ctrl+C 停止');
   console.log('─'.repeat(52));
 });
