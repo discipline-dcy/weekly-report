@@ -10,7 +10,7 @@
 node server.js
 ```
 
-浏览器打开 http://localhost:3100
+浏览器打开 <http://localhost:3100>
 
 零依赖，只用 Node 内置模块，不需要 `npm install`。
 
